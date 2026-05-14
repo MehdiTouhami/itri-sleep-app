@@ -45,3 +45,7 @@ sleepapp/ios/.symlinks/
 
 # ── Test coverage ────────────────────────────────────────────────
 coverage/
+
+# ── Build logs / scratch files ──────────────────────────────
+ITRI_SLEEP_BUILD_LOG*.md
+README.txt
