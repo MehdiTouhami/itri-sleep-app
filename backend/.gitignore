@@ -1,0 +1,14 @@
+# API keys — never commit
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+
+# chroma_db, chroma_research, and sleep_score_model.pkl are intentionally
+# committed so Railway can use them without re-running ingest scripts.

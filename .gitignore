@@ -1,0 +1,47 @@
+# ── Flutter / Dart ───────────────────────────────────────────────
+sleepapp/build/
+sleepapp/.dart_tool/
+sleepapp/.flutter-plugins
+sleepapp/.flutter-plugins-dependencies
+sleepapp/.pub-cache/
+sleepapp/.pub/
+sleepapp/*.g.dart
+sleepapp/lib/generated_plugin_registrant.dart
+
+# ── Python / FastAPI ─────────────────────────────────────────────
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/.venv/
+backend/venv/
+backend/chroma_db/
+backend/chroma_research/
+
+# ── Environment — never commit API keys ─────────────────────────
+.env
+*.env
+backend/.env
+sleepapp/.env
+
+# ── IDE ──────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+
+# ── macOS ────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Pseudo 1
+
+# ── Android ──────────────────────────────────────────────────────
+sleepapp/android/.gradle/
+sleepapp/android/local.properties
+sleepapp/android/key.properties
+*.jks
+
+# ── iOS ──────────────────────────────────────────────────────────
+sleepapp/ios/Pods/
+sleepapp/ios/.symlinks/
+
+# ── Test coverage ────────────────────────────────────────────────
+coverage/

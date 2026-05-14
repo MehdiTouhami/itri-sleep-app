@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-openai
+langchain-chroma
+chromadb
+openai
+python-dotenv
+scikit-learn
+joblib
