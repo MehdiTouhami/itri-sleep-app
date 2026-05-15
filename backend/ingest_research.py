@@ -14,7 +14,8 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-CHROMA_RESEARCH_DIR = "./chroma_research"
+_here = os.path.dirname(os.path.abspath(__file__))
+CHROMA_RESEARCH_DIR = os.path.join(_here, "chroma_research")
 
 RESEARCH_PAPERS = [
     {

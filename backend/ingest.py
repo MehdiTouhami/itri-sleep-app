@@ -19,7 +19,7 @@ CSV_DIR = os.environ.get(
     "CSV_DIR",
     os.path.join(_here, "../sleepapp/assets/data")
 )
-CHROMA_DIR = os.path.join(_here, "../chroma_db")
+CHROMA_DIR = os.path.join(_here, "chroma_db")
 
 
 def parse_csv(filepath: str) -> dict:

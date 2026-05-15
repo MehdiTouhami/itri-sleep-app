@@ -8,6 +8,7 @@ Retrieves from two ChromaDB collections:
 Every response is grounded in both your real data AND evidence-based research.
 """
 
+import os
 from operator import itemgetter
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -18,8 +19,9 @@ from langchain_core.runnables import RunnableLambda
 
 load_dotenv()
 
-CHROMA_DATA_DIR     = "./chroma_db"
-CHROMA_RESEARCH_DIR = "./chroma_research"
+_here = os.path.dirname(os.path.abspath(__file__))
+CHROMA_DATA_DIR     = os.path.join(_here, "chroma_db")
+CHROMA_RESEARCH_DIR = os.path.join(_here, "chroma_research")
 
 # --- Embeddings (shared across both collections) ---
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
