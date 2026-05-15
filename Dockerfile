@@ -6,14 +6,12 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code
+# Copy backend code and CSV assets
 COPY backend/ ./backend/
-
-# Copy Garmin CSV assets so ingest.py can read them
 COPY sleepapp/assets/data/ ./sleepapp/assets/data/
 
-# Build ChromaDB vector stores
-RUN python backend/ingest.py && python backend/ingest_research.py
+# start.sh: ingest then serve (env vars like OPENAI_API_KEY are available at runtime, not build time)
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
 
-# Start the API
-CMD bash -c "cd backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+CMD ["./start.sh"]
