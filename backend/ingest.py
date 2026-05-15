@@ -12,12 +12,14 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-# Path to Flutter asset CSVs — adjust if running from a different directory
-CSV_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "../sleepapp/assets/data"
+# CSVs are at sleepapp/assets/data/ relative to the repo root.
+# Works both locally (../sleepapp/assets/data from backend/) and in Docker (/app/sleepapp/assets/data).
+_here = os.path.dirname(os.path.abspath(__file__))
+CSV_DIR = os.environ.get(
+    "CSV_DIR",
+    os.path.join(_here, "../sleepapp/assets/data")
 )
-CHROMA_DIR = "./chroma_db"
+CHROMA_DIR = os.path.join(_here, "../chroma_db")
 
 
 def parse_csv(filepath: str) -> dict:
