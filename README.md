@@ -8,24 +8,27 @@ Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sle
 
 ## Features
 
-- **Sleep Coach** - AI chatbot that retrieves relevant personal sleep nights and peer-reviewed research before answering, using a dual RAG pipeline (ChromaDB + GPT-4o mini)
-- **Dashboard** - latest night summary with sleep score, stage breakdown, and key metrics
-- **Trends** - week-by-week sleep history with expandable cards, individual night detail, and a 12-week score chart
-- **Insights** - 7-night averages, Random Forest feature importance visualisation, sleep stage breakdown
-- **Onboarding and Goals** - personalised sleep targets saved locally via SharedPreferences
+- **Sleep Coach** - context-aware AI chatbot powered by GPT-4o mini with a dual RAG pipeline: retrieves relevant personal sleep nights and sleep research papers before generating each response
+- **279 nights of real data** - personal Garmin wearable exports (Jul 2025 - May 2026), bundled as structured CSV assets
+- **Random Forest model** - trained on personal sleep data, used for feature importance analysis (top drivers: Body Battery, HRV, REM sleep)
+- **Trends** - week-by-week sleep history with expandable weekly cards, clickable individual nights, and a 12-week score line chart
+- **Insights** - 7-night averages, key factor progress bars, RF feature importance visualisation, sleep stage breakdown
+- **Dashboard** - latest night summary with sleep score ring, stage breakdown, and key metrics
+- **Onboarding and Goals** - personalised sleep targets stored locally via SharedPreferences
 
 ---
 
 ## Stack
 
 **Mobile app** (`sleepapp/`)
-
-- Flutter (Dart), Riverpod, fl_chart, GoRouter, google_fonts, shared_preferences
+- Flutter (Dart)
+- Riverpod for state management
+- fl_chart for data visualisation
+- GoRouter, google_fonts, shared_preferences
 
 **Backend** (`backend/`)
-
 - Python FastAPI, deployed on Railway
-- LangChain + ChromaDB (dual vector store RAG)
+- LangChain + ChromaDB (dual vector store RAG pipeline)
 - OpenAI GPT-4o mini
 - scikit-learn Random Forest Regressor
 
@@ -34,20 +37,24 @@ Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sle
 ## Architecture
 
 ```
-Flutter app
-     |
-     | HTTPS
-     v
-FastAPI (Railway)
-     |
-     |-- ChromaDB: personal nights    top 5 per query
-     |-- ChromaDB: research papers    top 3 per query
-     |
-     v
-GPT-4o mini generates response with both sources as context
+Flutter app (mobile)
+       |
+       | HTTPS
+       v
+FastAPI backend (Railway)
+       |
+       |-- ChromaDB: personal nights    top 5 similar nights retrieved per query
+       |-- ChromaDB: research papers    top 3 relevant papers retrieved per query
+       |            |
+       |            v (concatenated context)
+       +-- GPT-4o mini generates response
 ```
 
-Embedding model: `text-embedding-3-small`. Around 1,500-1,800 tokens per request.
+RAG details:
+- Chunking: document-level (one Garmin night = one document, one paper = one document)
+- Embedding model: `text-embedding-3-small`
+- Retrieval: cosine similarity via ChromaDB, top 5 personal nights + top 3 research chunks
+- Around 1,500-1,800 tokens per request
 
 ---
 
@@ -60,14 +67,17 @@ Random Forest Regressor trained on personal Garmin sleep data.
 | Dataset | 279 nights (Jul 2025 - May 2026) |
 | Features | Body Battery, HRV, REM, Deep Sleep, Respiration, Stress, Resting HR, Day of Week |
 | Top predictor | Body Battery Change |
+| Cross-validated R2 | 0.96+ |
 
-Used for feature importance analysis rather than live prediction. With a single-user dataset, interpretability is more useful than generalisation.
+Used for feature importance analysis rather than live prediction. With a single-user dataset, interpretability is more valuable than generalisation.
+
+Training script: `train_model.py`. Original training notebook: `SleepDataTraining.ipynb`.
 
 ---
 
 ## Running locally
 
-The backend is deployed and always live, so no local setup is needed to run the app.
+The backend is deployed and always live on Railway, so no local backend setup is needed to run the app.
 
 ```bash
 git clone https://github.com/MehdiTouhami/itri-sleep-app.git
@@ -96,7 +106,7 @@ Set `kBaseUrl` in `sleepapp/lib/core/constants/app_config.dart` to `http://local
 sleepapp/lib/
     core/
         constants/      AppConfig, SharedPreferences keys
-        data/           SleepRepository (loads all 279 nights, caches with SharedPreferences)
+        data/           SleepRepository (loads and caches all 279 nights)
         models/         SleepNight (13 fields)
         providers/      Riverpod providers
         services/       AIService, InsightsService
