@@ -5,11 +5,11 @@ Run with: uvicorn main:app --reload --port 8000
 
 import os
 import joblib
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
-from rag_chain import chain
 
 # ---------------------------------------------------------------------------
 # RF model — loaded once at startup
@@ -51,7 +51,31 @@ _DISPLAY_NAMES = {
 
 _load_model()  # eager load so first request is fast
 
-app = FastAPI(title="Itri Sleep RAG Backend")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run ingest if ChromaDB collections don't exist yet
+    _here = os.path.dirname(os.path.abspath(__file__))
+    chroma_dir = os.path.join(_here, "chroma_db")
+    research_dir = os.path.join(_here, "chroma_research")
+
+    if not os.path.exists(chroma_dir) or not os.listdir(chroma_dir):
+        print("ChromaDB not found — running ingest.py...")
+        from ingest import ingest
+        ingest()
+
+    if not os.path.exists(research_dir) or not os.listdir(research_dir):
+        print("Research DB not found — running ingest_research.py...")
+        from ingest_research import ingest_research
+        ingest_research()
+
+    from rag_chain import chain as _chain
+    app.state.chain = _chain
+    print("RAG chain ready.")
+    yield
+
+
+app = FastAPI(title="Itri Sleep RAG Backend", lifespan=lifespan)
 
 # CORS — required for Flutter web (Chrome dev)
 app.add_middleware(
@@ -90,7 +114,7 @@ def feature_importance():
 
 
 @app.post("/chat")
-async def chat(body: ChatRequest):
+async def chat(request: Request, body: ChatRequest):
     if not body.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -102,7 +126,7 @@ async def chat(body: ChatRequest):
             chat_history.append(AIMessage(content=pair[1]))
 
     try:
-        answer = chain.invoke({
+        answer = request.app.state.chain.invoke({
             "question": body.message,
             "chat_history": chat_history,
         })
