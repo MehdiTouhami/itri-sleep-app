@@ -23,11 +23,17 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
   // Controls chat scrolling
   final ScrollController _scrollController = ScrollController();
 
-  // Stores chat messages
+  // Stores completed chat messages
   final List<Map<String, String>> _messages = [];
 
-  // Prevents double sending
+  // True while waiting for the first token (retrieval in progress)
   bool _isSending = false;
+
+  // True while tokens are actively streaming
+  bool _isStreaming = false;
+
+  // Accumulates tokens for the in-progress streamed reply
+  String _streamingText = '';
 
   // Quick prompt buttons
   final List<String> quickPrompts = const [
@@ -53,22 +59,13 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
 
   Future<void> _sendMessage(List<SleepNight> nights, String text) async {
     final message = text.trim();
-
-    // Ignore empty message or sending while waiting
-    if (message.isEmpty || _isSending) return;
+    if (message.isEmpty || _isSending || _isStreaming) return;
 
     setState(() {
-      // Add user message to chat
       _messages.add({"role": "user", "text": message});
-
-      // Show loading state
-      _isSending = true;
+      _isSending = true; // waiting for first token (retrieval phase)
     });
-
-    // Clear input after sending
     _controller.clear();
-
-    // Scroll to newest message
     _scrollToBottom();
 
     // Build history from all complete [user, coach] pairs before this message
@@ -81,33 +78,47 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
     }
 
     try {
-      // RAG backend handles retrieval + context — just send the message
-      final reply = await ai.sendMessage(message, history: history);
+      bool firstToken = true;
 
-      if (!mounted) return;
-
-      setState(() {
-        // Add AI reply to chat
-        _messages.add({"role": "coach", "text": reply});
-
-        // Stop loading state
-        _isSending = false;
-      });
+      await for (final token in ai.streamMessage(message, history: history)) {
+        if (!mounted) return;
+        setState(() {
+          if (firstToken) {
+            // First token arrived — switch from "waiting" to "streaming" state
+            _isSending = false;
+            _isStreaming = true;
+            _streamingText = '';
+            firstToken = false;
+          }
+          _streamingText += token;
+        });
+        _scrollToBottom();
+      }
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
-        // Fallback message if backend is unreachable
         _messages.add({
           "role": "coach",
-          "text": "Could not reach the sleep coach. Make sure the backend is running on localhost:8000.",
+          "text": "Could not reach the sleep coach. Make sure the backend is running.",
         });
-
         _isSending = false;
+        _isStreaming = false;
+        _streamingText = '';
       });
+      _scrollToBottom();
+      return;
     }
 
-    // Scroll again after reply
+    if (!mounted) return;
+    setState(() {
+      // Commit the fully streamed reply as a permanent message
+      if (_streamingText.isNotEmpty) {
+        _messages.add({"role": "coach", "text": _streamingText});
+      }
+      _streamingText = '';
+      _isStreaming = false;
+      _isSending = false;
+    });
     _scrollToBottom();
   }
 
@@ -416,10 +427,16 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
                           }),
                         ],
 
-                        // Typing indicator while waiting for AI reply
+                        // Waiting for first token (retrieval phase ~0.5s)
                         if (_isSending) ...[
                           const SizedBox(height: 4),
                           const _TypingBubble(),
+                        ],
+
+                        // Streaming — bubble grows as tokens arrive
+                        if (_isStreaming) ...[
+                          const SizedBox(height: 4),
+                          _CoachBubble(text: _streamingText),
                         ],
 
                         const SizedBox(height: 12),
@@ -573,20 +590,21 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
                                   isCollapsed: true,
                                 ),
 
-                                // Sends message when Enter is pressed
+                                // Send on Enter — ignored while streaming
                                 onSubmitted: (_) => _sendMessage(
                                   nights,
                                   _controller.text,
                                 ),
+                                enabled: !_isSending && !_isStreaming,
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
 
-                        // Send button
+                        // Send button — disabled while sending or streaming
                         GestureDetector(
-                          onTap: _isSending
+                          onTap: (_isSending || _isStreaming)
                               ? null
                               : () => _sendMessage(nights, _controller.text),
                           child: Container(
@@ -594,15 +612,20 @@ class _CoachScreenState extends ConsumerState<CoachScreen> {
                             height: 58,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFF22D3EE),
-                                  Color(0xFF3B82F6),
-                                ],
+                              gradient: LinearGradient(
+                                colors: (_isSending || _isStreaming)
+                                    ? [
+                                        const Color(0xFF22D3EE).withOpacity(0.4),
+                                        const Color(0xFF3B82F6).withOpacity(0.4),
+                                      ]
+                                    : const [
+                                        Color(0xFF22D3EE),
+                                        Color(0xFF3B82F6),
+                                      ],
                               ),
                             ),
                             child: Icon(
-                              _isSending
+                              (_isSending || _isStreaming)
                                   ? Icons.hourglass_top_rounded
                                   : Icons.send_rounded,
                               color: Colors.white,

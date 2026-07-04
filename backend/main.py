@@ -4,10 +4,12 @@ Run with: uvicorn main:app --reload --port 8000
 """
 
 import os
+import json
 import joblib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -133,3 +135,44 @@ async def chat(request: Request, body: ChatRequest):
         return {"reply": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat-stream")
+async def chat_stream(request: Request, body: ChatRequest):
+    """
+    Streaming version of /chat.
+    Returns an SSE stream: each event is {"token": "..."}, ending with [DONE].
+    The LLM tokens start arriving as soon as retrieval completes (~0.5s),
+    then stream word by word until the response is complete.
+    """
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    chat_history = []
+    for pair in body.history:
+        if len(pair) == 2:
+            chat_history.append(HumanMessage(content=pair[0]))
+            chat_history.append(AIMessage(content=pair[1]))
+
+    async def generate():
+        try:
+            async for chunk in request.app.state.chain.astream({
+                "question": body.message,
+                "chat_history": chat_history,
+            }):
+                if chunk:
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Tells Railway's nginx proxy not to buffer the stream
+            "X-Accel-Buffering": "no",
+        },
+    )
