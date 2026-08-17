@@ -2,13 +2,13 @@
 
 A mobile sleep analysis app built as a final-year Computer Science project. It analyses 279 nights of personal Garmin wearable data using a RAG-powered AI coach, a trained Random Forest model, and a Flutter frontend.
 
-Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sleep-app-production.up.railway.app/health)
+Live backend: [itri-sleep-app.onrender.com/health](https://itri-sleep-app.onrender.com/health)
 
 ---
 
 ## Features
 
-- **Sleep Coach** - context-aware AI chatbot powered by Gemini 2.5 Flash with a dual RAG pipeline: retrieves relevant personal sleep nights and sleep research papers before generating each response
+- **Sleep Coach** - context-aware AI chatbot powered by Gemini 3.6 Flash with a dual RAG pipeline: retrieves relevant personal sleep nights and sleep research papers before generating each response
 - **279 nights of real data** - personal Garmin wearable exports (Jul 2025 - May 2026), bundled as structured CSV assets
 - **Random Forest model** - trained on personal sleep data, used for feature importance analysis (top drivers: Body Battery, HRV, REM sleep)
 - **Trends** - week-by-week sleep history with expandable weekly cards, clickable individual nights, and a 12-week score line chart
@@ -27,9 +27,9 @@ Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sle
 - GoRouter, google_fonts, shared_preferences
 
 **Backend** (`backend/`)
-- Python FastAPI, deployed on Railway
+- Python FastAPI, deployed on Render
 - LangChain + ChromaDB (dual vector store RAG pipeline)
-- Google Gemini (gemini-2.5-flash + gemini-embedding-001)
+- Google Gemini (gemini-3.6-flash + gemini-embedding-001)
 - scikit-learn Random Forest Regressor
 
 ---
@@ -41,13 +41,13 @@ Flutter app (mobile)
        |
        | HTTPS
        v
-FastAPI backend (Railway)
+FastAPI backend (Render)
        |
        |-- ChromaDB: personal nights    top 5 similar nights retrieved per query
        |-- ChromaDB: research papers    top 3 relevant papers retrieved per query
        |            |
        |            v (concatenated context)
-       +-- Gemini 2.5 Flash generates response
+       +-- Gemini 3.6 Flash generates response
 ```
 
 RAG details:
@@ -77,7 +77,7 @@ Training script: `train_model.py`. Original training notebook: `SleepDataTrainin
 
 ## Running locally
 
-The backend is deployed and always live on Railway, so no local backend setup is needed to run the app.
+The backend is deployed on Render's free tier (it spins down after 15 minutes of inactivity and takes ~30-50s to wake on the next request), so no local backend setup is needed to run the app.
 
 ```bash
 git clone https://github.com/MehdiTouhami/itri-sleep-app.git

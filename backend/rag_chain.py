@@ -40,7 +40,7 @@ research_store = Chroma(
 research_retriever = research_store.as_retriever(search_kwargs={"k": 3})
 
 # --- LLM ---
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0.7)
 
 # --- Prompt ---
 SYSTEM_PROMPT = """You are Itri, an AI sleep coach inside the Itri Sleep mobile app.
