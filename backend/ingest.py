@@ -5,6 +5,7 @@ Run once before starting the server: python ingest.py
 
 import os
 import csv
+import time
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
@@ -68,6 +69,28 @@ def build_document_text(data: dict) -> str:
     )
 
 
+def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
+    """Add documents in small batches with backoff for Gemini's free-tier quota (100 req/min)."""
+    total = len(documents)
+    for i in range(0, total, batch_size):
+        batch = documents[i:i + batch_size]
+        for attempt in range(6):
+            try:
+                vectorstore.add_documents(batch)
+                break
+            except Exception as e:
+                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                    wait = 45
+                    print(f"  Rate limited, waiting {wait}s (attempt {attempt + 1})...")
+                    time.sleep(wait)
+                else:
+                    raise
+        else:
+            raise RuntimeError("Gave up after repeated rate-limit retries.")
+        print(f"  Embedded {min(i + batch_size, total)}/{total} nights")
+        time.sleep(pause)
+
+
 def ingest():
     print(f"Loading CSVs from: {os.path.abspath(CSV_DIR)} (up to 279 nights)")
 
@@ -94,14 +117,11 @@ def ingest():
         documents.append(doc)
         print(f"  ✓ Sleep-{i}.csv → {data.get('Date', '?')} | Score: {data.get('Sleep Score', '?')}")
 
-    print(f"\nEmbedding {len(documents)} nights into ChromaDB...")
+    print(f"\nEmbedding {len(documents)} nights into ChromaDB (rate-limited for Gemini free tier)...")
 
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-    vectorstore = Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory=CHROMA_DIR,
-    )
+    vectorstore = Chroma(embedding_function=embeddings, persist_directory=CHROMA_DIR)
+    embed_with_rate_limit(vectorstore, documents)
 
     print(f"\n✅ Done. {len(documents)} nights stored in {CHROMA_DIR}/")
     return vectorstore

@@ -7,6 +7,7 @@ Sources: Nature Reviews Neuroscience, JAMA, Sleep, PNAS, European Heart Journal,
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
@@ -244,6 +245,28 @@ RESEARCH_PAPERS = [
 ]
 
 
+def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
+    """Add documents in small batches with backoff for Gemini's free-tier quota (100 req/min)."""
+    total = len(documents)
+    for i in range(0, total, batch_size):
+        batch = documents[i:i + batch_size]
+        for attempt in range(6):
+            try:
+                vectorstore.add_documents(batch)
+                break
+            except Exception as e:
+                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                    wait = 45
+                    print(f"  Rate limited, waiting {wait}s (attempt {attempt + 1})...")
+                    time.sleep(wait)
+                else:
+                    raise
+        else:
+            raise RuntimeError("Gave up after repeated rate-limit retries.")
+        print(f"  Embedded {min(i + batch_size, total)}/{total} papers")
+        time.sleep(pause)
+
+
 def ingest_research():
     print(f"Embedding {len(RESEARCH_PAPERS)} verified peer-reviewed sleep science papers...")
 
@@ -268,11 +291,8 @@ def ingest_research():
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
     # Wipe and rebuild the research collection cleanly
-    Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory=CHROMA_RESEARCH_DIR,
-    )
+    vectorstore = Chroma(embedding_function=embeddings, persist_directory=CHROMA_RESEARCH_DIR)
+    embed_with_rate_limit(vectorstore, documents)
 
     print(f"\n✅ Done. {len(documents)} papers stored in {CHROMA_RESEARCH_DIR}/")
 
