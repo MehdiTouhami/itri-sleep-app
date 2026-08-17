@@ -8,7 +8,7 @@ Sources: Nature Reviews Neuroscience, JAMA, Sleep, PNAS, European Heart Journal,
 
 import os
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
@@ -265,7 +265,7 @@ def ingest_research():
         documents.append(doc)
         print(f"  ✓ {paper['topic']}")
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
     # Wipe and rebuild the research collection cleanly
     Chroma.from_documents(

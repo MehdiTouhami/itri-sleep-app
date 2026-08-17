@@ -6,7 +6,7 @@ Run once before starting the server: python ingest.py
 import os
 import csv
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
@@ -96,7 +96,7 @@ def ingest():
 
     print(f"\nEmbedding {len(documents)} nights into ChromaDB...")
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma.from_documents(
         documents=documents,
         embedding=embeddings,

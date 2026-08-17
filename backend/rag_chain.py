@@ -9,9 +9,8 @@ Every response is grounded in both your real data AND evidence-based research.
 """
 
 import os
-from operator import itemgetter
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -24,7 +23,7 @@ CHROMA_DATA_DIR     = os.path.join(_here, "chroma_db")
 CHROMA_RESEARCH_DIR = os.path.join(_here, "chroma_research")
 
 # --- Embeddings (shared across both collections) ---
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
 # --- Personal sleep data retriever ---
 personal_store = Chroma(
@@ -41,7 +40,7 @@ research_store = Chroma(
 research_retriever = research_store.as_retriever(search_kwargs={"k": 3})
 
 # --- LLM ---
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
 
 # --- Prompt ---
 SYSTEM_PROMPT = """You are Itri, an AI sleep coach inside the Itri Sleep mobile app.
@@ -87,14 +86,20 @@ def _retrieve_both(question: str) -> dict:
     }
 
 
+def _build_context(x: dict) -> dict:
+    """Retrieve once per query, then hand off question/history unchanged."""
+    retrieved = _retrieve_both(x["question"])
+    return {
+        "personal_context": retrieved["personal_context"],
+        "research_context":  retrieved["research_context"],
+        "question":          x["question"],
+        "chat_history":      x["chat_history"],
+    }
+
+
 # --- LCEL chain ---
 chain = (
-    {
-        "personal_context": RunnableLambda(lambda x: _retrieve_both(x["question"])["personal_context"]),
-        "research_context":  RunnableLambda(lambda x: _retrieve_both(x["question"])["research_context"]),
-        "question":          itemgetter("question"),
-        "chat_history":      itemgetter("chat_history"),
-    }
+    RunnableLambda(_build_context)
     | prompt
     | llm
     | StrOutputParser()

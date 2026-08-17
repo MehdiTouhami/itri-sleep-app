@@ -8,7 +8,7 @@ Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sle
 
 ## Features
 
-- **Sleep Coach** - context-aware AI chatbot powered by GPT-4o mini with a dual RAG pipeline: retrieves relevant personal sleep nights and sleep research papers before generating each response
+- **Sleep Coach** - context-aware AI chatbot powered by Gemini 2.5 Flash with a dual RAG pipeline: retrieves relevant personal sleep nights and sleep research papers before generating each response
 - **279 nights of real data** - personal Garmin wearable exports (Jul 2025 - May 2026), bundled as structured CSV assets
 - **Random Forest model** - trained on personal sleep data, used for feature importance analysis (top drivers: Body Battery, HRV, REM sleep)
 - **Trends** - week-by-week sleep history with expandable weekly cards, clickable individual nights, and a 12-week score line chart
@@ -29,7 +29,7 @@ Live backend: [itri-sleep-app-production.up.railway.app/health](https://itri-sle
 **Backend** (`backend/`)
 - Python FastAPI, deployed on Railway
 - LangChain + ChromaDB (dual vector store RAG pipeline)
-- OpenAI GPT-4o mini
+- Google Gemini (gemini-2.5-flash + gemini-embedding-001)
 - scikit-learn Random Forest Regressor
 
 ---
@@ -47,12 +47,12 @@ FastAPI backend (Railway)
        |-- ChromaDB: research papers    top 3 relevant papers retrieved per query
        |            |
        |            v (concatenated context)
-       +-- GPT-4o mini generates response
+       +-- Gemini 2.5 Flash generates response
 ```
 
 RAG details:
 - Chunking: document-level (one Garmin night = one document, one paper = one document)
-- Embedding model: `text-embedding-3-small`
+- Embedding model: `gemini-embedding-001`
 - Retrieval: cosine similarity via ChromaDB, top 5 personal nights + top 3 research chunks
 - Around 1,500-1,800 tokens per request
 
@@ -86,7 +86,7 @@ flutter pub get
 flutter run
 ```
 
-To run the backend locally:
+To run the backend locally, set a `GOOGLE_API_KEY` in `backend/.env` (get one from [Google AI Studio](https://aistudio.google.com/apikey)):
 
 ```bash
 cd itri-sleep-app/backend

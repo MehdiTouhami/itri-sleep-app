@@ -1,10 +1,9 @@
 fastapi
 uvicorn[standard]
 langchain
-langchain-openai
+langchain-google-genai
 langchain-chroma
 chromadb
-openai
 python-dotenv
 scikit-learn
 joblib
