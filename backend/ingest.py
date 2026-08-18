@@ -14,8 +14,13 @@ from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain_core.documents import Document
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
 
 load_dotenv()
+
+# gemini-embedding-001's default output dimensionality.
+EMBEDDING_SIZE = 3072
 
 # CSVs are at sleepapp/assets/data/ relative to the repo root.
 # Works both locally (../sleepapp/assets/data from backend/) and in Docker (/app/sleepapp/assets/data).
@@ -81,11 +86,13 @@ def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
     total = len(documents)
     for i in range(0, total, batch_size):
         batch = documents[i:i + batch_size]
+        last_error = None
         for attempt in range(6):
             try:
                 vectorstore.add_documents(batch)
                 break
             except Exception as e:
+                last_error = e
                 if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
                     wait = 45
                     print(f"  Rate limited, waiting {wait}s (attempt {attempt + 1})...")
@@ -93,31 +100,20 @@ def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
                 else:
                     raise
         else:
-            raise RuntimeError("Gave up after repeated rate-limit retries.")
+            raise RuntimeError(f"Gave up after repeated rate-limit retries. Last error: {last_error}")
         print(f"  Embedded {min(i + batch_size, total)}/{total} nights")
         time.sleep(pause)
 
 
-def _create_collection_with_retry(first_batch, embeddings, max_attempts=6):
-    """Create/reset the Qdrant collection by embedding the first batch (handles Gemini rate limits)."""
-    for attempt in range(max_attempts):
-        try:
-            return QdrantVectorStore.from_documents(
-                first_batch,
-                embedding=embeddings,
-                url=QDRANT_URL,
-                api_key=QDRANT_API_KEY,
-                collection_name=COLLECTION_NAME,
-                force_recreate=True,
-            )
-        except Exception as e:
-            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                wait = 45
-                print(f"  Rate limited creating collection, waiting {wait}s (attempt {attempt + 1})...")
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError("Gave up creating the Qdrant collection after repeated rate-limit retries.")
+def _reset_collection(client):
+    """(Re)create the Qdrant collection empty. This is a Qdrant admin call — it doesn't
+    touch Gemini at all, so it isn't subject to the embedding rate limit."""
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
+    )
 
 
 def ingest():
@@ -148,14 +144,12 @@ def ingest():
 
     print(f"\nEmbedding {len(documents)} nights into Qdrant (rate-limited for Gemini free tier)...")
 
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    _reset_collection(client)
+
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-
-    first_batch, rest = documents[:10], documents[10:]
-    vectorstore = _create_collection_with_retry(first_batch, embeddings)
-    print(f"  Embedded {len(first_batch)}/{len(documents)} nights (collection created)")
-    time.sleep(3)
-
-    embed_with_rate_limit(vectorstore, rest)
+    vectorstore = QdrantVectorStore(client=client, collection_name=COLLECTION_NAME, embedding=embeddings)
+    embed_with_rate_limit(vectorstore, documents)
 
     print(f"\n✅ Done. {len(documents)} nights stored in Qdrant collection '{COLLECTION_NAME}'")
     return vectorstore
