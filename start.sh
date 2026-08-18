@@ -1,15 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "==> Running ingest.py..."
-python backend/ingest.py
-
-# small buffer so the personal-nights and research embedding runs don't share
-# the same Gemini free-tier per-minute quota window
-sleep 5
-
-echo "==> Running ingest_research.py..."
-python backend/ingest_research.py
+# Vector data now lives in Qdrant Cloud (persists across restarts and
+# Render's free-tier cold starts), so ingestion is handled lazily and only
+# once by main.py's lifespan — no unconditional ingest step here anymore.
 
 echo "==> Starting uvicorn..."
 cd backend && uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"

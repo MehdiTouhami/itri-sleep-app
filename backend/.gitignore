@@ -10,5 +10,4 @@ __pycache__/
 venv/
 .venv/
 
-# chroma_db, chroma_research, and sleep_score_model.pkl are intentionally
-# committed so Railway can use them without re-running ingest scripts.
+# Vector embeddings live in Qdrant Cloud, not on disk — nothing local to ignore for them.

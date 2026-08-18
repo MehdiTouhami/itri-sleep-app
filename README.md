@@ -28,7 +28,7 @@ Live backend: [itri-sleep-app.onrender.com/health](https://itri-sleep-app.onrend
 
 **Backend** (`backend/`)
 - Python FastAPI, deployed on Render
-- LangChain + ChromaDB (dual vector store RAG pipeline)
+- LangChain + Qdrant Cloud (dual vector store RAG pipeline)
 - Google Gemini (gemini-3.6-flash + gemini-embedding-001)
 - scikit-learn Random Forest Regressor
 
@@ -43,8 +43,8 @@ Flutter app (mobile)
        v
 FastAPI backend (Render)
        |
-       |-- ChromaDB: personal nights    top 5 similar nights retrieved per query
-       |-- ChromaDB: research papers    top 3 relevant papers retrieved per query
+       |-- Qdrant Cloud: personal nights    top 5 similar nights retrieved per query
+       |-- Qdrant Cloud: research papers    top 3 relevant papers retrieved per query
        |            |
        |            v (concatenated context)
        +-- Gemini 3.6 Flash generates response
@@ -53,8 +53,9 @@ FastAPI backend (Render)
 RAG details:
 - Chunking: document-level (one Garmin night = one document, one paper = one document)
 - Embedding model: `gemini-embedding-001`
-- Retrieval: cosine similarity via ChromaDB, top 5 personal nights + top 3 research chunks
+- Retrieval: cosine similarity via Qdrant Cloud, top 5 personal nights + top 3 research chunks
 - Around 1,500-1,800 tokens per request
+- Vector store: Qdrant Cloud (free tier) instead of local ChromaDB — embeddings persist across Render's free-tier cold starts, so the 279 nights + 18 papers aren't re-embedded from scratch every time the instance spins back up
 
 ---
 
@@ -86,13 +87,13 @@ flutter pub get
 flutter run
 ```
 
-To run the backend locally, set a `GOOGLE_API_KEY` in `backend/.env` (get one from [Google AI Studio](https://aistudio.google.com/apikey)):
+To run the backend locally, set `GOOGLE_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` in `backend/.env` (Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), Qdrant credentials from a free [Qdrant Cloud](https://cloud.qdrant.io) cluster):
 
 ```bash
 cd itri-sleep-app/backend
 pip install -r requirements.txt
-python ingest.py
-python ingest_research.py
+python ingest.py             # one-time seed — skip if the Qdrant collections are already populated
+python ingest_research.py    # one-time seed — skip if the Qdrant collections are already populated
 uvicorn main:app --reload --port 8000
 ```
 
@@ -130,7 +131,7 @@ sleepapp/lib/
 backend/
     main.py               FastAPI: /chat, /health, /feature-importance
     rag_chain.py          Dual RAG pipeline (LangChain LCEL)
-    ingest.py             Garmin CSV -> ChromaDB
-    ingest_research.py    Research papers -> ChromaDB
+    ingest.py             Garmin CSV -> Qdrant Cloud
+    ingest_research.py    Research papers -> Qdrant Cloud
     sleep_score_model.pkl
 ```

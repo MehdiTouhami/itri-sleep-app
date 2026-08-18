@@ -1,7 +1,7 @@
 """
 rag_chain.py — Dual-retrieval RAG chain for Itri Sleep Coach.
 
-Retrieves from two ChromaDB collections:
+Retrieves from two Qdrant Cloud collections:
   1. Personal Garmin sleep data (your actual nights)
   2. Curated sleep science research summaries
 
@@ -11,31 +11,37 @@ Every response is grounded in both your real data AND evidence-based research.
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_chroma import Chroma
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda
 
 load_dotenv()
 
-_here = os.path.dirname(os.path.abspath(__file__))
-CHROMA_DATA_DIR     = os.path.join(_here, "chroma_db")
-CHROMA_RESEARCH_DIR = os.path.join(_here, "chroma_research")
+QDRANT_URL = os.environ["QDRANT_URL"]
+QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+PERSONAL_COLLECTION = "personal_nights"
+RESEARCH_COLLECTION = "research_papers"
+
+qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 # --- Embeddings (shared across both collections) ---
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
 # --- Personal sleep data retriever ---
-personal_store = Chroma(
-    persist_directory=CHROMA_DATA_DIR,
-    embedding_function=embeddings,
+personal_store = QdrantVectorStore(
+    client=qdrant_client,
+    collection_name=PERSONAL_COLLECTION,
+    embedding=embeddings,
 )
 personal_retriever = personal_store.as_retriever(search_kwargs={"k": 5})
 
 # --- Sleep research retriever ---
-research_store = Chroma(
-    persist_directory=CHROMA_RESEARCH_DIR,
-    embedding_function=embeddings,
+research_store = QdrantVectorStore(
+    client=qdrant_client,
+    collection_name=RESEARCH_COLLECTION,
+    embedding=embeddings,
 )
 research_retriever = research_store.as_retriever(search_kwargs={"k": 3})
 

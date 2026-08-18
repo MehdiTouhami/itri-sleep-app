@@ -1,22 +1,27 @@
 """
-ingest_research.py — Embed verified peer-reviewed sleep science papers into ChromaDB.
+ingest_research.py — Embed verified peer-reviewed sleep science papers into Qdrant Cloud.
 Run once: python3 ingest_research.py
 
 All 18 papers below are real, peer-reviewed, and verified.
 Sources: Nature Reviews Neuroscience, JAMA, Sleep, PNAS, European Heart Journal, etc.
+
+Vectors persist in Qdrant Cloud (free tier), so this only needs to run the
+first time — main.py's lifespan checks whether the collection is already
+seeded before calling this on every boot.
 """
 
 import os
 import time
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_qdrant import QdrantVectorStore
 from langchain_core.documents import Document
 
 load_dotenv()
 
-_here = os.path.dirname(os.path.abspath(__file__))
-CHROMA_RESEARCH_DIR = os.path.join(_here, "chroma_research")
+QDRANT_URL = os.environ["QDRANT_URL"]
+QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+COLLECTION_NAME = "research_papers"
 
 RESEARCH_PAPERS = [
     {
@@ -267,6 +272,28 @@ def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
         time.sleep(pause)
 
 
+def _create_collection_with_retry(first_batch, embeddings, max_attempts=6):
+    """Create/reset the Qdrant collection by embedding the first batch (handles Gemini rate limits)."""
+    for attempt in range(max_attempts):
+        try:
+            return QdrantVectorStore.from_documents(
+                first_batch,
+                embedding=embeddings,
+                url=QDRANT_URL,
+                api_key=QDRANT_API_KEY,
+                collection_name=COLLECTION_NAME,
+                force_recreate=True,
+            )
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                wait = 45
+                print(f"  Rate limited creating collection, waiting {wait}s (attempt {attempt + 1})...")
+                time.sleep(wait)
+            else:
+                raise
+    raise RuntimeError("Gave up creating the Qdrant collection after repeated rate-limit retries.")
+
+
 def ingest_research():
     print(f"Embedding {len(RESEARCH_PAPERS)} verified peer-reviewed sleep science papers...")
 
@@ -290,11 +317,14 @@ def ingest_research():
 
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
-    # Wipe and rebuild the research collection cleanly
-    vectorstore = Chroma(embedding_function=embeddings, persist_directory=CHROMA_RESEARCH_DIR)
-    embed_with_rate_limit(vectorstore, documents)
+    first_batch, rest = documents[:10], documents[10:]
+    vectorstore = _create_collection_with_retry(first_batch, embeddings)
+    print(f"  Embedded {len(first_batch)}/{len(documents)} papers (collection created)")
+    time.sleep(3)
 
-    print(f"\n✅ Done. {len(documents)} papers stored in {CHROMA_RESEARCH_DIR}/")
+    embed_with_rate_limit(vectorstore, rest)
+
+    print(f"\n✅ Done. {len(documents)} papers stored in Qdrant collection '{COLLECTION_NAME}'")
 
 
 if __name__ == "__main__":

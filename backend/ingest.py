@@ -1,6 +1,10 @@
 """
-ingest.py — Parse all Garmin CSVs and embed into ChromaDB.
-Run once before starting the server: python ingest.py
+ingest.py — Parse all Garmin CSVs and embed into Qdrant Cloud.
+Run once: python ingest.py
+
+Vectors persist in Qdrant Cloud (free tier), so this only needs to run the
+first time — main.py's lifespan checks whether the collection is already
+seeded before calling this on every boot.
 """
 
 import os
@@ -8,7 +12,7 @@ import csv
 import time
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_qdrant import QdrantVectorStore
 from langchain_core.documents import Document
 
 load_dotenv()
@@ -20,7 +24,10 @@ CSV_DIR = os.environ.get(
     "CSV_DIR",
     os.path.join(_here, "../sleepapp/assets/data")
 )
-CHROMA_DIR = os.path.join(_here, "chroma_db")
+
+QDRANT_URL = os.environ["QDRANT_URL"]
+QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+COLLECTION_NAME = "personal_nights"
 
 
 def parse_csv(filepath: str) -> dict:
@@ -91,6 +98,28 @@ def embed_with_rate_limit(vectorstore, documents, batch_size=10, pause=3):
         time.sleep(pause)
 
 
+def _create_collection_with_retry(first_batch, embeddings, max_attempts=6):
+    """Create/reset the Qdrant collection by embedding the first batch (handles Gemini rate limits)."""
+    for attempt in range(max_attempts):
+        try:
+            return QdrantVectorStore.from_documents(
+                first_batch,
+                embedding=embeddings,
+                url=QDRANT_URL,
+                api_key=QDRANT_API_KEY,
+                collection_name=COLLECTION_NAME,
+                force_recreate=True,
+            )
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                wait = 45
+                print(f"  Rate limited creating collection, waiting {wait}s (attempt {attempt + 1})...")
+                time.sleep(wait)
+            else:
+                raise
+    raise RuntimeError("Gave up creating the Qdrant collection after repeated rate-limit retries.")
+
+
 def ingest():
     print(f"Loading CSVs from: {os.path.abspath(CSV_DIR)} (up to 279 nights)")
 
@@ -117,13 +146,18 @@ def ingest():
         documents.append(doc)
         print(f"  ✓ Sleep-{i}.csv → {data.get('Date', '?')} | Score: {data.get('Sleep Score', '?')}")
 
-    print(f"\nEmbedding {len(documents)} nights into ChromaDB (rate-limited for Gemini free tier)...")
+    print(f"\nEmbedding {len(documents)} nights into Qdrant (rate-limited for Gemini free tier)...")
 
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-    vectorstore = Chroma(embedding_function=embeddings, persist_directory=CHROMA_DIR)
-    embed_with_rate_limit(vectorstore, documents)
 
-    print(f"\n✅ Done. {len(documents)} nights stored in {CHROMA_DIR}/")
+    first_batch, rest = documents[:10], documents[10:]
+    vectorstore = _create_collection_with_retry(first_batch, embeddings)
+    print(f"  Embedded {len(first_batch)}/{len(documents)} nights (collection created)")
+    time.sleep(3)
+
+    embed_with_rate_limit(vectorstore, rest)
+
+    print(f"\n✅ Done. {len(documents)} nights stored in Qdrant collection '{COLLECTION_NAME}'")
     return vectorstore
 
 

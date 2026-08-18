@@ -54,22 +54,36 @@ _DISPLAY_NAMES = {
 _load_model()  # eager load so first request is fast
 
 
+def _collection_seeded(client, name: str) -> bool:
+    """True if the Qdrant collection exists and already has vectors in it."""
+    try:
+        return client.get_collection(name).points_count > 0
+    except Exception:
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run ingest if ChromaDB collections don't exist yet
-    _here = os.path.dirname(os.path.abspath(__file__))
-    chroma_dir = os.path.join(_here, "chroma_db")
-    research_dir = os.path.join(_here, "chroma_research")
+    # Qdrant Cloud persists between deploys/cold starts, so ingestion only
+    # needs to run once ever — not on every boot like the old local-Chroma setup.
+    from qdrant_client import QdrantClient
 
-    if not os.path.exists(chroma_dir) or not os.listdir(chroma_dir):
-        print("ChromaDB not found — running ingest.py...")
+    qdrant_client = QdrantClient(
+        url=os.environ["QDRANT_URL"],
+        api_key=os.environ["QDRANT_API_KEY"],
+    )
+
+    if not _collection_seeded(qdrant_client, "personal_nights"):
+        print("Qdrant collection 'personal_nights' empty/missing — running ingest.py (one-time seed)...")
         from ingest import ingest
         ingest()
 
-    if not os.path.exists(research_dir) or not os.listdir(research_dir):
-        print("Research DB not found — running ingest_research.py...")
+    if not _collection_seeded(qdrant_client, "research_papers"):
+        print("Qdrant collection 'research_papers' empty/missing — running ingest_research.py (one-time seed)...")
         from ingest_research import ingest_research
         ingest_research()
+
+    qdrant_client.close()
 
     from rag_chain import chain as _chain
     app.state.chain = _chain
@@ -172,7 +186,7 @@ async def chat_stream(request: Request, body: ChatRequest):
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            # Tells Railway's nginx proxy not to buffer the stream
+            # Disables response buffering on proxies in front of the app
             "X-Accel-Buffering": "no",
         },
     )
